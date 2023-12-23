@@ -1,6 +1,7 @@
 import re
 from datetime import datetime
 from enum import Enum
+from functools import cached_property
 from math import isqrt
 from typing import Literal, cast
 
@@ -68,7 +69,7 @@ class Picture(BaseModel, alias_generator=to_camel):
             data['uploadDate'] = cast(datetime, data['uploadDate']).isoformat()
             data['url'] = self.url
             st.expander('details').json(data)
-            if self.p_count == 1:
+            if abs(self.p_count) == 1:
                 st.image(self.url, caption=self.caption)
                 return
             tabs = st.tabs([f'p{p+1}' for p in range(self.p_count)])
@@ -76,7 +77,7 @@ class Picture(BaseModel, alias_generator=to_camel):
                 self.p = p
                 tabs[p].image(self.url, caption=self.caption)
 
-    @property
+    @cached_property
     def p_count(self) -> int:
         url = f'https://pixiv.re/{self.pid}-65536.{self.ext}'
         text = requests.get(url).text
