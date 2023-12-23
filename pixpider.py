@@ -33,8 +33,8 @@ if 'timezone' not in state:
 
 class AiType(Enum):
     Unknown = 0
-    Yes = 1
-    No = 2
+    No = 1
+    Yes = 2
 
 
 class Picture(BaseModel, alias_generator=to_camel):
