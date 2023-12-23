@@ -63,14 +63,18 @@ class Picture(BaseModel, alias_generator=to_camel):
 
     def update(self) -> None:
         with self._dg.container(border=True):
-            st.expander('details').json(self.model_dump_json())
+            data = self.model_dump(by_alias=True)
+            data['aiType'] = cast(AiType, data['aiType']).name.lower()
+            data['uploadDate'] = cast(datetime, data['uploadDate']).isoformat()
+            data['url'] = self.url
+            st.expander('details').json(data)
             if self.p_count == 1:
                 st.image(self.url, caption=self.caption)
-            else:
-                tabs = st.tabs([f'p{p+1}' for p in range(self.p_count)])
-                for p in range(self.p_count):
-                    self.p = p
-                    tabs[p].image(self.url, caption=self.caption)
+                return
+            tabs = st.tabs([f'p{p+1}' for p in range(self.p_count)])
+            for p in range(self.p_count):
+                self.p = p
+                tabs[p].image(self.url, caption=self.caption)
 
     @property
     def p_count(self) -> int:
@@ -84,18 +88,19 @@ class Picture(BaseModel, alias_generator=to_camel):
 
     @property
     def url(self) -> str:
+        assert size is not None
         return url_maps[size].format(
             proxy=proxy,
             date=self.upload_date.strftime(r'%Y/%m/%d/%H/%M/%S'),
             pid=self.pid, p=self.p, ext=self.ext, **{'p+1': self.p + 1}
-        ).replace('-0', '')
+        ).replace('-1', '')
 
     @property
     def caption(self) -> str:
         return f'{self.title} by {self.author}'
 
 
-st.set_page_config("PixPider", ":spider:")
+st.set_page_config("PixPider", ":spider:", 'wide')
 with st.sidebar:
     st.title(':spider: :rainbow[PixPider]')
     r18 = st.selectbox('r18', r18_options)
@@ -103,7 +108,11 @@ with st.sidebar:
     uid = st.number_input('uid', step=1)
     keyword = st.text_input('keyword')
     tags = st_tags(label='tags', text='', key='tags')
-    size = cast(str, st.radio('size', size_options, horizontal=True))
+
+    def no_fetch() -> None:
+        state['loaded'] = True
+
+    size = st.radio('size', size_options, on_change=no_fetch, horizontal=True)
     proxy = st.text_input('proxy', 'i.pixiv.re', disabled=size == 'direct')
     date_range = st.slider('date range', value=state['date_range'])
     date_from, date_to = cast(tuple[datetime, datetime], date_range)
@@ -116,7 +125,7 @@ with st.sidebar:
 if 'loaded' in state:
     del state['loaded']
 else:
-    params = dict(
+    state['params'] = dict(
         r18=r18_options.index(r18),
         num=num,
         uid=uid,
@@ -129,17 +138,11 @@ else:
         dsc=dsc,
         excludeAI=excludeAI,
     )
-    response = requests.post(api_url, json=params).json()
-
-    if error := response['error']:
+    state['response'] = requests.post(api_url, json=state['params']).json()
+    if error := state['response']['error']:
         st.error(error)
-    pictures = [Picture(**picture) for picture in response['data']]
 
-    state['params'] = params
-    state['response'] = response
-    state['pictures'] = pictures
-
-pictures: list[Picture] = state['pictures']
+pictures: list[Picture] = [Picture(**pic) for pic in state['response']['data']]
 picture_counts = len(pictures)
 max_columns = isqrt(picture_counts)
 columns = st.columns(min(picture_counts, max_columns))
