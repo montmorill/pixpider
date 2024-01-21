@@ -1,4 +1,3 @@
-import re
 from datetime import datetime
 from enum import Enum
 from functools import cached_property
@@ -10,14 +9,13 @@ import streamlit as st
 from pytz import timezone
 from pydantic import BaseModel
 from pydantic.alias_generators import to_camel
-from streamlit import session_state as state
+from streamlit import cache_data, session_state
 from streamlit.delta_generator import DeltaGenerator
 from streamlit_tags import st_tags
 
 
 api_url = 'https://api.lolicon.app/setu/v2'
 url_maps = {
-    'direct': 'https://pixiv.re/{pid}-{p+1}.{ext}',
     'original': 'https://{proxy}/img-original/img/{date}/{pid}_p{p}.{ext}',
     'regular': 'https://{proxy}/img-master/img/{date}/{pid}_p{p}_master1200.{ext}',
     'small': 'https://{proxy}/c/540x540_70/img-master/img/{date}/{pid}_p{p}_master1200.{ext}',
@@ -25,11 +23,18 @@ url_maps = {
     'mini': 'https://{proxy}/c/250x250_80_a2/img-master/img/{date}/{pid}_p{p}_master1200.{ext}',
 }
 r18_options = 'False', 'True', 'Both'
-size_options = 'original', 'regular', 'small', 'thumb', 'mini', 'direct'
-if 'date_range' not in state:
-    state['date_range'] = datetime(2007, 9, 10), datetime.today()
-if 'timezone' not in state:
-    state['timezone'] = timezone('Japan')
+size_options = 'original', 'regular', 'small', 'thumb', 'mini'
+
+state = cast(dict, session_state)
+
+
+@cache_data
+def date_range():
+    return datetime(2007, 9, 10), datetime.today()
+
+
+def no_fetch() -> None:
+    state['loaded'] = True
 
 
 class AiType(Enum):
@@ -40,7 +45,6 @@ class AiType(Enum):
 
 class Picture(BaseModel, alias_generator=to_camel):
     pid: int
-    p: int
     uid: int
     title: str
     author: str
@@ -56,7 +60,7 @@ class Picture(BaseModel, alias_generator=to_camel):
 
     def __init__(self, **data) -> None:
         super().__init__(**data)
-        self.upload_date = self.upload_date.astimezone(state['timezone'])
+        self.upload_date = self.upload_date.astimezone(timezone('Japan'))
 
     def bind(self, dg: DeltaGenerator) -> None:
         self._dg = dg
@@ -67,36 +71,33 @@ class Picture(BaseModel, alias_generator=to_camel):
             data = self.model_dump(by_alias=True)
             data['aiType'] = cast(AiType, data['aiType']).name.lower()
             data['uploadDate'] = cast(datetime, data['uploadDate']).isoformat()
-            data['url'] = self.url
+            data['urls'] = [self.url(p) for p in range(self.page_count)]
             st.expander('details').json(data)
-            if abs(self.p_count) == 1:
-                st.image(self.url, caption=self.caption)
-                return
-            tabs = st.tabs([f'p{p+1}' for p in range(self.p_count)])
-            for p in range(self.p_count):
-                self.p = p
-                tabs[p].image(self.url, caption=self.caption)
+            if self.page_count == 1:
+                st.image(self.url(0), caption=self.caption)
+            elif self.page_count != 0:
+                tabs = st.tabs([f'p{p+1}' for p in range(self.page_count)])
+                for p in range(self.page_count):
+                    caption = f"{self.caption} ({p + 1}/{self.page_count})"
+                    tabs[p].image(self.url(p), caption)
 
     @cached_property
-    def p_count(self) -> int:
-        url = f'https://pixiv.re/{self.pid}-65536.{self.ext}'
-        text = requests.get(url, verify=False).text
-        if matched := re.search(r'This work has (\d+|just one) ', text):
-            p_count = matched.group(0)[14:-1]
-            return 1 if p_count == 'just one' else int(p_count)
-        st.error(text)
-        return -1
+    def page_count(self) -> int:
+        page_count = 0
+        while requests.head(self.url(page_count)):
+            page_count += 1
+        return page_count
 
-    @property
-    def url(self) -> str:
-        assert size is not None
-        return url_maps[size].format(
+    def url(self, p: int) -> str:
+        return url_maps[cast(str, size)].format(
             proxy=proxy,
             date=self.upload_date.strftime(r'%Y/%m/%d/%H/%M/%S'),
-            pid=self.pid, p=self.p, ext=self.ext, **{'p+1': self.p + 1}
-        ).replace('-1', '')
+            pid=self.pid,
+            p=p,
+            ext=self.ext,
+        )
 
-    @property
+    @cached_property
     def caption(self) -> str:
         return f'{self.title} by {self.author}'
 
@@ -105,22 +106,19 @@ st.set_page_config("PixPider", ":spider:", 'wide')
 with st.sidebar:
     st.title(':spider: :rainbow[PixPider]')
     r18 = st.selectbox('r18', r18_options)
-    num = st.slider('num', 1, 20, 1)
+    num = st.slider('num', 1, 20)
     uid = st.number_input('uid', step=1)
     keyword = st.text_input('keyword')
     tags = st_tags(label='tags', text='', key='tags')
-
-    def no_fetch() -> None:
-        state['loaded'] = True
-
     size = st.radio('size', size_options, on_change=no_fetch, horizontal=True)
-    proxy = st.text_input('proxy', 'i.pixiv.re', disabled=size == 'direct')
-    date_range = st.slider('date range', value=state['date_range'])
-    date_from, date_to = cast(tuple[datetime, datetime], date_range)
+    proxy = st.text_input('proxy', 'i.pixiv.re')
+    _date_range = st.slider('date range', value=date_range())
+    date_from, date_to = cast(tuple[datetime, datetime], _date_range)
+    left, right = st.columns(2)
     dsc_help = 'Disable replacing certain abbreviations `keywords` and `tags`'
-    dsc = st.checkbox('dsc', help=dsc_help)
-    excludeAI = st.checkbox('exclude AI')
-    st.button('fetch', type='primary')
+    dsc = left.checkbox('dsc', help=dsc_help)
+    exclude_ai = right.checkbox('exclude AI')
+    st.button('fetch', type='primary', use_container_width=True)
 
 
 if 'loaded' in state:
@@ -132,20 +130,21 @@ else:
         uid=uid,
         keyword=keyword,
         tag=tags,
-        size=size_options,
+        size=size,
         proxy=proxy,
-        dateAfter=date_from.timestamp() * 1000,
-        dateBefore=date_to.timestamp() * 1000,
+        date_after=date_from.timestamp() * 1000,
+        date_before=date_to.timestamp() * 1000,
         dsc=dsc,
-        excludeAI=excludeAI,
+        exclude_ai=exclude_ai,
     )
+    state['params'] = {to_camel(k): v for k, v in state['params'].items()}
     state['response'] = requests.post(api_url, json=state['params']).json()
     if error := state['response']['error']:
         st.error(error)
 
-pictures: list[Picture] = [Picture(**pic) for pic in state['response']['data']]
-picture_counts = len(pictures)
-max_columns = isqrt(picture_counts)
-columns = st.columns(min(picture_counts, max_columns))
+pictures = [Picture(**pic) for pic in state['response']['data']]
+picture_count = len(pictures)
+column_count = isqrt(picture_count)
+columns = st.columns(column_count)
 for index, picture in enumerate(pictures):
-    picture.bind(columns[index % max_columns])
+    picture.bind(columns[index % column_count])
