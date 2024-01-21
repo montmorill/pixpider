@@ -25,7 +25,7 @@ url_maps = {
     'mini': 'https://{proxy}/c/250x250_80_a2/img-master/img/{date}/{pid}_p{p}_master1200.{ext}',
 }
 r18_options = 'False', 'True', 'Both'
-size_options = 'direct', 'original', 'regular', 'small', 'thumb', 'mini'
+size_options = 'original', 'regular', 'small', 'thumb', 'mini', 'direct'
 if 'date_range' not in state:
     state['date_range'] = datetime(2007, 9, 10), datetime.today()
 if 'timezone' not in state:
