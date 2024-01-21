@@ -80,7 +80,7 @@ class Picture(BaseModel, alias_generator=to_camel):
     @cached_property
     def p_count(self) -> int:
         url = f'https://pixiv.re/{self.pid}-65536.{self.ext}'
-        text = requests.get(url).text
+        text = requests.get(url, verify=False).text
         if matched := re.search(r'This work has (\d+|just one) ', text):
             p_count = matched.group(0)[14:-1]
             return 1 if p_count == 'just one' else int(p_count)
