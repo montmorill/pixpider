@@ -69,6 +69,7 @@ class Picture(BaseModel, alias_generator=to_camel):
     def update(self) -> None:
         with self._dg.container(border=True):
             data = self.model_dump(by_alias=True)
+            data['pageCount'] = self.page_count
             data['aiType'] = cast(AiType, data['aiType']).name.lower()
             data['uploadDate'] = cast(datetime, data['uploadDate']).isoformat()
             data['urls'] = [self.url(p) for p in range(self.page_count)]
@@ -80,6 +81,8 @@ class Picture(BaseModel, alias_generator=to_camel):
                 for p in range(self.page_count):
                     caption = f"{self.caption} ({p + 1}/{self.page_count})"
                     tabs[p].image(self.url(p), caption)
+            else:
+                st.error("Oops, we can't find the picture anywhere!")
 
     @cached_property
     def page_count(self) -> int:
@@ -143,8 +146,10 @@ else:
         st.error(error)
 
 pictures = [Picture(**pic) for pic in state['response']['data']]
-picture_count = len(pictures)
-column_count = isqrt(picture_count)
-columns = st.columns(column_count)
-for index, picture in enumerate(pictures):
-    picture.bind(columns[index % column_count])
+if picture_count := len(pictures):
+    column_count = isqrt(picture_count)
+    columns = st.columns(column_count)
+    for index, picture in enumerate(pictures):
+        picture.bind(columns[index % column_count])
+else:
+    st.error('Sorry, there are no images match the filter.')
