@@ -16,11 +16,11 @@ from streamlit_tags import st_tags
 
 api_url = 'https://api.lolicon.app/setu/v2'
 url_maps = {
-    'original': 'https://{proxy}/img-original/img/{date}/{pid}_p{p}.{ext}',
-    'regular': 'https://{proxy}/img-master/img/{date}/{pid}_p{p}_master1200.{ext}',
-    'small': 'https://{proxy}/c/540x540_70/img-master/img/{date}/{pid}_p{p}_master1200.{ext}',
-    'thumb': 'https://{proxy}/c/250x250_80_a2/img-master/img/{date}/{pid}_p{p}_master1200.{ext}',
-    'mini': 'https://{proxy}/c/250x250_80_a2/img-master/img/{date}/{pid}_p{p}_master1200.{ext}',
+    'original': '{proxy}/img-original/img/{date}/{pid}_p{p}.{ext}',
+    'regular': '{proxy}/img-master/img/{date}/{pid}_p{p}_master1200.{ext}',
+    'small': '{proxy}/c/540x540_70/img-master/img/{date}/{pid}_p{p}_master1200.{ext}',
+    'thumb': '{proxy}/c/250x250_80_a2/img-master/img/{date}/{pid}_p{p}_master1200.{ext}',
+    'mini': '{proxy}/c/250x250_80_a2/img-master/img/{date}/{pid}_p{p}_master1200.{ext}',
 }
 r18_options = 'False', 'True', 'Both'
 size_options = 'original', 'regular', 'small', 'thumb', 'mini'
@@ -114,7 +114,7 @@ with st.sidebar:
     keyword = st.text_input('keyword')
     tags = st_tags(label='tags', text='', key='tags')
     size = st.radio('size', size_options, on_change=no_fetch, horizontal=True)
-    proxy = st.text_input('proxy', 'i.pixiv.re')
+    proxy = st.text_input('proxy', 'https://i.pixiv.re')
     _date_range = st.slider('date range', value=date_range())
     date_from, date_to = cast(tuple[datetime, datetime], _date_range)
     left, right = st.columns(2)
